@@ -30,10 +30,10 @@ def authorization():
     return access_token
 
 
-def get_speaker_iqa(token, offset):
+def get_promo_code_iqa(token, offset):
     yesterday_datetime = datetime.today() - timedelta(days=1)
     yest_datetime_frmt = yesterday_datetime.strftime('%Y-%m-%d%%20%H%%3A%M%%3A%S.000000')
-    url = f"https://www2.ispe.org/Asi.Scheduler_IMIS/api/iqa?QueryName=$/ISPEIQA/Queries/HubSpot/HS_Speakers&offset={offset}&limit=100"
+    url = f"https://www2.ispe.org/Asi.Scheduler_IMIS/api/iqa?QueryName=$/ISPEIQA/Queries/HubSpot/HS_PromoCodes&offset={offset}&limit=100"
 
     headers = {
         'Content-Type': "application/json",
@@ -46,7 +46,7 @@ def get_speaker_iqa(token, offset):
     return data
 
 
-# get_speaker_iqa(authorization(),0)
+# get_promo_code_iqa(authorization(),0)
 
 
 # function returns iMIS contact email, given iMIS contact ID
@@ -334,7 +334,7 @@ def create_or_update_hs_contact(imis_id):
     # logging.debug(res)
 
 
-def create_hs_deal(imis_id, event_name, sole_num, role, session_id):
+def create_hs_deal(imis_id, promo_code, promo_code_used_for, date_promo_code_used, sole_num):
     today = date.today()
     # open logging file
     # logging.basicConfig(filename=f'/home/oboagency/hubspot/logging/abandonedRegistration{today}.log', level=logging.DEBUG,
@@ -349,36 +349,36 @@ def create_hs_deal(imis_id, event_name, sole_num, role, session_id):
         "properties": [
             {
                 "name": "dealname",
-                "value": f"Speaker_{event_name}"
+                "value": f"Promo_Code_{promo_code}"
             },
             {
                 "name": "dealstage",
-                "value": "918506"
+                "value": "919189"
             },
             {
                 "name": "pipeline",
-                "value": "918505"
+                "value": "919188"
+            },
+            {
+                "name": "promo_code",
+                "value": promo_code
+            },
+            {
+                "name": "promo_code_used_for",
+                "value": promo_code_used_for
+            },
+            {
+                "name": "date_promo_code_used",
+                "value": date_promo_code_used
             },
             {
                 "name": "imis_id",
                 "value": imis_id
             },
             {
-                "name": "speaker_sole_num",
+                "name": "promo_code_sole_num",
                 "value": sole_num
             },
-            {
-                "name": "event_name",
-                "value": event_name
-            },
-            {
-                "name": "role",
-                "value": role
-            },
-            {
-                "name": "session_id",
-                "value": session_id
-            }
         ]
     }
 
@@ -391,12 +391,12 @@ def create_hs_deal(imis_id, event_name, sole_num, role, session_id):
 
 
 def main_function():
-    speaker_data = {}  # initializes a dictionary that will store the contact data
+    promo_code_data = {}  # initializes a dictionary that will store the contact data
 
     has_next = True
     offset = 0
     while has_next:
-        data = get_speaker_iqa(authorization(), offset)  # gets a new request for the new offset range
+        data = get_promo_code_iqa(authorization(), offset)  # gets a new request for the new offset range
         # for page in data:
         for i in data['Items']['$values']:
             for value in i['Properties']['$values']:  # for each contact in data
@@ -405,19 +405,19 @@ def main_function():
                 else:
                     try:
                         # adds the contact field and value to cart_data dictionary
-                        speaker_data[value['Name']] = value['Value']
+                        promo_code_data[value['Name']] = value['Value']
                     except:
-                        speaker_data[value['Name']] = ''
-            # print(speaker_data)  # prints speakere_data dictionary for testing
+                        promo_code_data[value['Name']] = ''
+            # print(promo_code_data)  # prints promo_code_data dictionary for testing
 
             # define fields and convert date fields to unix milliseconds
-            st_id = speaker_data['ID']
-            meeting = speaker_data['Meeting']
-            role = speaker_data['Role']
-            function_code = speaker_data['Function_Code']
-            sole_num = speaker_data['Sole_Num']
+            st_id = promo_code_data['Id']
+            sole_num = promo_code_data['Sole_Num']
+            promo_code = promo_code_data['Promo_Code']
+            promo_code_used_for = promo_code_data['Where_Used']
+            date_promo_code_used = promo_code_data['Date']
 
-            cur_date = datetime.today()
+            # cur_date = datetime.today()
             # print(cur_date - datetime.strptime(order_date, "%Y-%m-%dT%H:%M:%S"))
             # if cur_date - datetime.strptime(order_date, "%Y-%m-%dT%H:%M:%S") <= timedelta(days=2*365):
             #     print('<2 yrs')
@@ -430,7 +430,7 @@ def main_function():
                 create_or_update_hs_contact(st_id)
                 print('create/update success')
             except:
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
+                promo_code_data = {}  # clears promo_code_data dictionary for next item in request
                 continue
             # try/except block to handle if iMIS email is not valid format
             try:
@@ -438,55 +438,55 @@ def main_function():
                 assoc_deals = get_associated_hs_deals(get_hs_contact_id(imis_email))
                 print('Assoc Deals', assoc_deals)
             except:
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
+                promo_code_data = {}  # clears promo_code_data dictionary for next item in request
                 continue
 
-            assoc_deals_speaker_sole_nums = []
+            assoc_deals_promo_code_sole_nums = []
 
             if not assoc_deals:
                 create_hs_deal(
-                    imis_id=st_id, event_name=meeting,
-                    sole_num=sole_num, role=role, session_id=function_code
+                    imis_id=st_id, promo_code=promo_code, promo_code_used_for=promo_code_used_for,
+                    date_promo_code_used=date_promo_code_used, sole_num=sole_num
                 )
 
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
+                promo_code_data = {}  # clears promo_code_data dictionary for next item in request
                 continue
 
             # loop thru associated HS deal IDs to return deal cart ID
             for deal_id in assoc_deals:
-                deal_url = f'https://api.hubapi.com/deals/v1/deal/{deal_id}?hapikey={hs_api_key}&property=speaker_sole_num'
+                deal_url = f'https://api.hubapi.com/deals/v1/deal/{deal_id}?hapikey={hs_api_key}&property=promo_code_sole_num'
                 headers = {"Content-Type": "application/json"}
 
                 req = requests.get(deal_url, headers=headers)
                 res = req.json()
 
                 try:
-                    deal_sole_num = res['properties']['speaker_sole_num']['value']
+                    deal_sole_num = res['properties']['promo_code_sole_num']['value']
                 except:
                     deal_sole_num = ''
 
-                assoc_deals_speaker_sole_nums.append(deal_sole_num)
+                assoc_deals_promo_code_sole_nums.append(deal_sole_num)
 
             # if HS Deal cart ID equal to iMIS cart ID, deal already created; continue
-            if sole_num in assoc_deals_speaker_sole_nums:
+            if sole_num in assoc_deals_promo_code_sole_nums:
 
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
+                promo_code_data = {}  # clears promo_code_data dictionary for next item in request
                 continue
             # else, deal not yet created; create deal
             else:
                 create_hs_deal(
-                    imis_id=st_id, event_name=meeting,
-                    sole_num=sole_num, role=role, session_id=function_code
+                    imis_id=st_id, promo_code=promo_code, promo_code_used_for=promo_code_used_for,
+                    data_promo_code_used=date_promo_code_used, sole_num=sole_num
                 )
 
         else:
-            speaker_data = {}  # clears speaker_data dictionary for next item in request
+            promo_code_data = {}  # clears promo_code_data dictionary for next item in request
             continue
 
-        speaker_data = {}  # clears the speaker_data dictionary for the next contact in the request
+        promo_code_data = {}  # clears the promo_code_data dictionary for the next contact in the request
 
         has_next = data['HasNext']
         offset = data['NextOffset']
 
 
-# main_function()
+main_function()

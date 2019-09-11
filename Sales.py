@@ -30,10 +30,10 @@ def authorization():
     return access_token
 
 
-def get_speaker_iqa(token, offset):
+def get_sales_iqa(token, offset):
     yesterday_datetime = datetime.today() - timedelta(days=1)
     yest_datetime_frmt = yesterday_datetime.strftime('%Y-%m-%d%%20%H%%3A%M%%3A%S.000000')
-    url = f"https://www2.ispe.org/Asi.Scheduler_IMIS/api/iqa?QueryName=$/ISPEIQA/Queries/HubSpot/HS_Speakers&offset={offset}&limit=100"
+    url = f"https://www2.ispe.org/Asi.Scheduler_IMIS/api/iqa?QueryName=$/ISPEIQA/Queries/HubSpot/HS_Sales&offset={offset}&limit=100"
 
     headers = {
         'Content-Type': "application/json",
@@ -46,7 +46,7 @@ def get_speaker_iqa(token, offset):
     return data
 
 
-# get_speaker_iqa(authorization(),0)
+# get_sales_iqa(authorization(),0)
 
 
 # function returns iMIS contact email, given iMIS contact ID
@@ -334,7 +334,7 @@ def create_or_update_hs_contact(imis_id):
     # logging.debug(res)
 
 
-def create_hs_deal(imis_id, event_name, sole_num, role, session_id):
+def create_hs_deal(imis_id, total_charges, purchase_date_mil, last_updated_mil, sole_num, product_code, marketing_title):
     today = date.today()
     # open logging file
     # logging.basicConfig(filename=f'/home/oboagency/hubspot/logging/abandonedRegistration{today}.log', level=logging.DEBUG,
@@ -349,35 +349,47 @@ def create_hs_deal(imis_id, event_name, sole_num, role, session_id):
         "properties": [
             {
                 "name": "dealname",
-                "value": f"Speaker_{event_name}"
+                "value": f"Sales_{product_code}"
             },
             {
                 "name": "dealstage",
-                "value": "918506"
+                "value": "918985"
             },
             {
                 "name": "pipeline",
-                "value": "918505"
+                "value": "918984"
+            },
+            {
+                "name": "amount",
+                "value": total_charges
+            },
+            {
+                "name": "total_charges",
+                "value": total_charges
+            },
+            {
+                "name": "purchase_date",
+                "value": purchase_date_mil
+            },
+            {
+                "name": "last_updated",
+                "value": last_updated_mil
             },
             {
                 "name": "imis_id",
                 "value": imis_id
             },
             {
-                "name": "speaker_sole_num",
+                "name": "sales_sole_num",
                 "value": sole_num
             },
             {
-                "name": "event_name",
-                "value": event_name
+                "name": "product_code",
+                "value": product_code
             },
             {
-                "name": "role",
-                "value": role
-            },
-            {
-                "name": "session_id",
-                "value": session_id
+                "name": "marketing_title",
+                "value": marketing_title
             }
         ]
     }
@@ -391,12 +403,12 @@ def create_hs_deal(imis_id, event_name, sole_num, role, session_id):
 
 
 def main_function():
-    speaker_data = {}  # initializes a dictionary that will store the contact data
+    sales_data = {}  # initializes a dictionary that will store the contact data
 
     has_next = True
     offset = 0
     while has_next:
-        data = get_speaker_iqa(authorization(), offset)  # gets a new request for the new offset range
+        data = get_sales_iqa(authorization(), offset)  # gets a new request for the new offset range
         # for page in data:
         for i in data['Items']['$values']:
             for value in i['Properties']['$values']:  # for each contact in data
@@ -405,85 +417,90 @@ def main_function():
                 else:
                     try:
                         # adds the contact field and value to cart_data dictionary
-                        speaker_data[value['Name']] = value['Value']
+                        sales_data[value['Name']] = value['Value']
                     except:
-                        speaker_data[value['Name']] = ''
-            # print(speaker_data)  # prints speakere_data dictionary for testing
+                        sales_data[value['Name']] = ''
+            # print(sales_data)  # prints sales_data dictionary for testing
 
             # define fields and convert date fields to unix milliseconds
-            st_id = speaker_data['ID']
-            meeting = speaker_data['Meeting']
-            role = speaker_data['Role']
-            function_code = speaker_data['Function_Code']
-            sole_num = speaker_data['Sole_Num']
+            st_id = sales_data['ST_ID']
+            order_date = sales_data['Order_Date']
+            # print(order_date)
+            order_date_mil = int(datetime.strptime(order_date, '%Y-%m-%dT%H:%M:%S').timestamp() * 1000)
+            total_charges = sales_data['Total_Charges']['$value']
+            last_updated = sales_data['Last_Updated'].split(".")[0]
+            last_updated_mil = int(datetime.strptime(last_updated, '%Y-%m-%dT%H:%M:%S').timestamp() * 1000)
+            sole_num = sales_data['Sole_Num']
+            marketing_title = sales_data['Description']
+            product_code = sales_data['Product_Code']
 
             cur_date = datetime.today()
-            # print(cur_date - datetime.strptime(order_date, "%Y-%m-%dT%H:%M:%S"))
-            # if cur_date - datetime.strptime(order_date, "%Y-%m-%dT%H:%M:%S") <= timedelta(days=2*365):
-            #     print('<2 yrs')
+            print(cur_date - datetime.strptime(order_date, "%Y-%m-%dT%H:%M:%S"))
+            if cur_date - datetime.strptime(order_date, "%Y-%m-%dT%H:%M:%S") <= timedelta(days=2*365):
+                print('<2 yrs')
                 # for each iMIS contact ID, return contact email
-            imis_email = get_imis_contact_email(st_id)
-            print('iMIS Email', imis_email)
-
-            try:
-                # for each returned contact email, create or update HubSpot contact
-                create_or_update_hs_contact(st_id)
-                print('create/update success')
-            except:
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
-                continue
-            # try/except block to handle if iMIS email is not valid format
-            try:
-                # for each returned iMIS email, get corresponding HubSpot contact associated deals
-                assoc_deals = get_associated_hs_deals(get_hs_contact_id(imis_email))
-                print('Assoc Deals', assoc_deals)
-            except:
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
-                continue
-
-            assoc_deals_speaker_sole_nums = []
-
-            if not assoc_deals:
-                create_hs_deal(
-                    imis_id=st_id, event_name=meeting,
-                    sole_num=sole_num, role=role, session_id=function_code
-                )
-
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
-                continue
-
-            # loop thru associated HS deal IDs to return deal cart ID
-            for deal_id in assoc_deals:
-                deal_url = f'https://api.hubapi.com/deals/v1/deal/{deal_id}?hapikey={hs_api_key}&property=speaker_sole_num'
-                headers = {"Content-Type": "application/json"}
-
-                req = requests.get(deal_url, headers=headers)
-                res = req.json()
+                imis_email = get_imis_contact_email(st_id)
+                print('iMIS Email', imis_email)
 
                 try:
-                    deal_sole_num = res['properties']['speaker_sole_num']['value']
+                    # for each returned contact email, create or update HubSpot contact
+                    create_or_update_hs_contact(st_id)
+                    print('create/update success')
                 except:
-                    deal_sole_num = ''
+                    sales_data = {}  # clears sales_data dictionary for next item in request
+                    continue
+                # try/except block to handle if iMIS email is not valid format
+                try:
+                    # for each returned iMIS email, get corresponding HubSpot contact associated deals
+                    assoc_deals = get_associated_hs_deals(get_hs_contact_id(imis_email))
+                    print('Assoc Deals', assoc_deals)
+                except:
+                    sales_data = {}  # clears sales_data dictionary for next item in request
+                    continue
 
-                assoc_deals_speaker_sole_nums.append(deal_sole_num)
+                assoc_deals_sales_sole_nums = []
 
-            # if HS Deal cart ID equal to iMIS cart ID, deal already created; continue
-            if sole_num in assoc_deals_speaker_sole_nums:
+                if not assoc_deals:
+                    create_hs_deal(
+                        imis_id=st_id, total_charges=total_charges, product_code=product_code, marketing_title=marketing_title,
+                        purchase_date_mil=order_date_mil, last_updated_mil=last_updated_mil, sole_num=sole_num
+                    )
 
-                speaker_data = {}  # clears speaker_data dictionary for next item in request
-                continue
-            # else, deal not yet created; create deal
+                    sales_data = {}  # clears sales_data dictionary for next item in request
+                    continue
+
+                # loop thru associated HS deal IDs to return deal cart ID
+                for deal_id in assoc_deals:
+                    deal_url = f'https://api.hubapi.com/deals/v1/deal/{deal_id}?hapikey={hs_api_key}&property=sales_sole_num'
+                    headers = {"Content-Type": "application/json"}
+
+                    req = requests.get(deal_url, headers=headers)
+                    res = req.json()
+
+                    try:
+                        deal_sole_num = res['properties']['sales_sole_num']['value']
+                    except:
+                        deal_sole_num = ''
+
+                    assoc_deals_sales_sole_nums.append(deal_sole_num)
+
+                # if HS Deal cart ID equal to iMIS cart ID, deal already created; continue
+                if sole_num in assoc_deals_sales_sole_nums:
+
+                    sales_data = {}  # clears sales_data dictionary for next item in request
+                    continue
+                # else, deal not yet created; create deal
+                else:
+                    create_hs_deal(
+                        imis_id=st_id, total_charges=total_charges, product_code=product_code, marketing_title=marketing_title,
+                        purchase_date_mil=order_date_mil, last_updated_mil=last_updated_mil, sole_num=sole_num
+                    )
+
             else:
-                create_hs_deal(
-                    imis_id=st_id, event_name=meeting,
-                    sole_num=sole_num, role=role, session_id=function_code
-                )
+                sales_data = {}  # clears sales_data dictionary for next item in request
+                continue
 
-        else:
-            speaker_data = {}  # clears speaker_data dictionary for next item in request
-            continue
-
-        speaker_data = {}  # clears the speaker_data dictionary for the next contact in the request
+            sales_data = {}  # clears the sales_data dictionary for the next contact in the request
 
         has_next = data['HasNext']
         offset = data['NextOffset']
